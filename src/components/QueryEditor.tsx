@@ -31,11 +31,9 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
       <InlineField label="Program Id" labelWidth={10}>
         <Input onChange={onProgramIdChange} value={payload?.programId} width={16} />
       </InlineField>
-      {payload.queryType === QueryType.ProgramInvocations && (
-        <InlineField label="Instruction Name" tooltip="Optional Name of instruction to filter by." labelWidth={20}>
-          <Input onChange={onIxNameChange} value={payload?.instructionName} width={16} />
-        </InlineField>
-      )}
+      <InlineField label="Instruction Name" tooltip="Optional Name of instruction to filter by." labelWidth={20}>
+        <Input onChange={onIxNameChange} value={payload?.instructionName} width={16} />
+      </InlineField>
     </div>
   );
 }

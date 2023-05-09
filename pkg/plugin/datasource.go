@@ -294,7 +294,7 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 			var curr_time time.Time
 			var curr_failure float32 = 0
 			var curr_len float32 = 0
-			for i, n := range invocationsResponse.Buckets {
+			for i, n := range invocationsResponse.Buckets[0 : len(invocationsResponse.Buckets)-1] {
 				if i != 0 && n.Time != curr_time {
 					curr_time = n.Time
 					if n.Status != "success" {
