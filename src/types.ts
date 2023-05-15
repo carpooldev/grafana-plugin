@@ -18,27 +18,45 @@ export enum QueryType {
   ProgramSigners = 'uniqueSigners',
   ProgramFailureRate = 'failureRate',
   ProgramFailues = 'failures',
+  ProgramDeployments = 'programDeployments',
+  FailedProgramDeployments = 'failedProgramDeployments',
 }
 
 export const QueryTypes = [
   {
     label: 'Program Invocations',
     value: QueryType.ProgramInvocations,
-
+    fields: ['programId', 'instructionName']
   },
   {
     label: 'Program Signers',
     value: QueryType.ProgramSigners,
+    fields: ['programId', 'instructionName']
   },
   {
     label: 'Program Failure Rate',
     value: QueryType.ProgramFailureRate,
+    fields: ['programId', 'instructionName']
   },
   {
     label: 'Program Failures',
     value: QueryType.ProgramFailues,
+    fields: ['programId', 'instructionName']
+  },
+  {
+    label: 'Program Deployments',
+    value: QueryType.ProgramDeployments,
+    fields: ['programId']
+  },
+  {
+    label: 'Failed Program Deployments',
+    value: QueryType.FailedProgramDeployments,
+    fields: ['programId']
   },
 ];
+
+
+
 /**
  * These are options configured for each DataSource instance
  */

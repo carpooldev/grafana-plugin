@@ -28,10 +28,12 @@ var (
 type MetricType string
 
 const (
-	Invocations   MetricType = "invocations"
-	UniqueSigners MetricType = "uniqueSigners"
-	Failures      MetricType = "failures"
-	FailureRate   MetricType = "failureRate"
+	Invocations              MetricType = "invocations"
+	UniqueSigners            MetricType = "uniqueSigners"
+	Failures                 MetricType = "failures"
+	FailureRate              MetricType = "failureRate"
+	ProgramDeployments       MetricType = "programDeployments"
+	FailedProgramDeployments MetricType = "failedProgramDeployments"
 )
 
 func calculateBuckets(start, end time.Time, bucketSeconds int32) int32 {
@@ -60,6 +62,10 @@ func getQueryType(qt MetricType) MetricType {
 		return Invocations
 	case FailureRate:
 		return Invocations
+	case ProgramDeployments:
+		return ProgramDeployments
+	case FailedProgramDeployments:
+		return FailedProgramDeployments
 	default:
 		return Invocations
 	}
@@ -67,8 +73,8 @@ func getQueryType(qt MetricType) MetricType {
 
 // NewDatasource creates a new datasource instance.
 func NewDatasource(inst backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
-	readTimeout, _ := time.ParseDuration("500ms")
-	writeTimeout, _ := time.ParseDuration("500ms")
+	readTimeout, _ := time.ParseDuration("15000ms")
+	writeTimeout, _ := time.ParseDuration("15000ms")
 	maxIdleConnDuration, _ := time.ParseDuration("1h")
 	var client = &fasthttp.Client{
 		ReadTimeout:              readTimeout,
@@ -135,10 +141,6 @@ func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataReques
 	return response, nil
 }
 
-type metricBucket interface {
-	invocationsBucket | signersBucket
-}
-
 type queryPayload struct {
 	QueryType string `json:"queryType"`
 	ProgramId string `json:"programId"`
@@ -161,8 +163,20 @@ type signersBucket struct {
 	Count int32     `json:"count"`
 }
 
+type programEventBucket struct {
+	Count     int32     `json:"count"`
+	Time      time.Time `json:"time"`
+	Authority string    `json:"authority"`
+	Status    string    `json:"status"`
+	Action    string    `json:"action"`
+}
+
 type invocationsMetricsResponse struct {
 	Buckets []invocationsBucket `json:"buckets"`
+}
+
+type programEventsResponse struct {
+	Buckets []programEventBucket `json:"buckets"`
 }
 
 type signersMetricsResponse struct {
@@ -311,6 +325,44 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 				data.NewField("time", nil, times),
 				data.NewField("rate", nil, values),
 			)
+		}
+	case string(FailedProgramDeployments):
+		fallthrough
+	case string(ProgramDeployments):
+
+		{
+			var programEvents programEventsResponse
+			err = json.Unmarshal(resp.Body(), &programEvents)
+			if err != nil {
+				return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
+			}
+			times := make([]time.Time, len(programEvents.Buckets))
+			values := make([]int32, len(programEvents.Buckets))
+			authorityLabels := make([]string, len(programEvents.Buckets))
+			statusLabels := make([]string, len(programEvents.Buckets))
+			actionLabels := make([]string, len(programEvents.Buckets))
+			//Faster than append since we pre allocated
+			//Revers iter for Long -> wide conversion
+			log.DefaultLogger.Info("Program Events: ", programEvents.Buckets)
+			for i, n := range programEvents.Buckets {
+				times[i] = n.Time
+				values[i] = int32(n.Count)
+				statusLabels[i] = n.Status
+				authorityLabels[i] = n.Authority
+				actionLabels[i] = n.Action
+			}
+
+			frame.Fields = append(frame.Fields,
+				data.NewField("time", nil, times),
+				data.NewField("count", nil, values),
+				data.NewField("authority", nil, statusLabels),
+				data.NewField("status", nil, statusLabels),
+				data.NewField("action", nil, actionLabels),
+			)
+
+			if err != nil {
+				return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("long to wide: %v", err.Error()))
+			}
 		}
 	default:
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("invalid query type: %s", qm.Payload.QueryType))

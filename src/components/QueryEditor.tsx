@@ -1,4 +1,4 @@
-import React, { ChangeEvent } from 'react';
+import React, { ChangeEvent, useState } from 'react';
 import { InlineField, Input, Select } from '@grafana/ui';
 import { QueryEditorProps, SelectableValue } from '@grafana/data';
 import { DataSource } from '../datasource';
@@ -15,25 +15,38 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     onChange({ ...query, payload: { ...query.payload, instructionName: event.target.value } });
     onRunQuery();
   };
+  const types = QueryTypes;
   const onQueryTypeChange = (event: SelectableValue<string>) => {
     onChange({ ...query, payload: { ...query.payload, queryType: event.value as QueryType } });
     onRunQuery();
+    const selectedType = findType(event.value as QueryType);
+    setType(selectedType);
   };
 
-  const types = QueryTypes;
+
+  const findType = (t: QueryType) => {
+    return types.find((type) => type.value === t);
+  };
+
   const { payload } = query;
+  const [selectedType, setType] = useState(findType(payload?.queryType || QueryType.ProgramInvocations));
 
   return (
     <div className="gf-form">
       <InlineField label="Query Type" labelWidth={16} tooltip="Query type, currently Basic Invocations, Signers">
-        <Select onChange={onQueryTypeChange} options={types} value={payload?.queryType || QueryType.ProgramInvocations} />
+        <Select onChange={onQueryTypeChange} options={types} value={selectedType} />
       </InlineField>
-      <InlineField label="Program Id" labelWidth={10}>
-        <Input onChange={onProgramIdChange} value={payload?.programId} width={16} />
-      </InlineField>
-      <InlineField label="Instruction Name" tooltip="Optional Name of instruction to filter by." labelWidth={20}>
-        <Input onChange={onIxNameChange} value={payload?.instructionName} width={16} />
-      </InlineField>
-    </div>
+      {selectedType?.fields.includes('programId') &&
+        <InlineField label="Program Id" labelWidth={10}>
+          <Input onChange={onProgramIdChange} value={payload?.programId} width={16} />
+        </InlineField>
+      }
+
+      {selectedType?.fields.includes('instructionName') &&
+        <InlineField label="Instruction Name" tooltip="Optional Name of instruction to filter by." labelWidth={20}>
+          <Input onChange={onIxNameChange} value={payload?.instructionName} width={16} />
+        </InlineField>
+      }
+    </div >
   );
 }
