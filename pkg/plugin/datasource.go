@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"container/heap"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -34,6 +35,7 @@ const (
 	FailureRate              MetricType = "failureRate"
 	ProgramDeployments       MetricType = "programDeployments"
 	FailedProgramDeployments MetricType = "failedProgramDeployments"
+	TopInstructions          MetricType = "topInstructions"
 )
 
 func calculateBuckets(start, end time.Time, bucketSeconds int32) int32 {
@@ -66,6 +68,8 @@ func getQueryType(qt MetricType) MetricType {
 		return ProgramDeployments
 	case FailedProgramDeployments:
 		return FailedProgramDeployments
+	case TopInstructions:
+		return Invocations
 	default:
 		return Invocations
 	}
@@ -145,6 +149,7 @@ type queryPayload struct {
 	QueryType string `json:"queryType"`
 	ProgramId string `json:"programId"`
 	IxName    string `json:"instructionName"`
+	TopN      int32  `json:"topN"`
 }
 
 type queryModel struct {
@@ -183,6 +188,90 @@ type signersMetricsResponse struct {
 	Buckets []signersBucket `json:"buckets"`
 }
 
+type instructionInvocationsResponse struct {
+	times        []time.Time
+	values       []int32
+	statusLabels []string
+	ixNameLabels []string
+}
+
+type invocationHeap []*invocationHeapItem
+
+type invocationHeapItem struct {
+	ixName string
+	count  int32
+	index  int
+}
+
+func (h invocationHeap) Len() int           { return len(h) }
+func (h invocationHeap) Less(i, j int) bool { return h[i].count > h[j].count }
+func (h invocationHeap) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+	h[i].index = i
+	h[j].index = j
+}
+
+func (h *invocationHeap) Push(x any) {
+	n := len(*h)
+	item := x.(*invocationHeapItem)
+	item.index = n
+	*h = append(*h, item)
+}
+
+func (h *invocationHeap) Pop() any {
+	old := *h
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil // avoid memory leak
+	item.index = -1
+	*h = old[0 : n-1]
+	return item
+}
+
+func (pq *invocationHeap) update(item *invocationHeapItem, total int32) {
+	item.count += total
+	heap.Fix(pq, item.index)
+}
+
+func (h invocationHeap) topN(n int32) map[string]bool {
+	topN := make(map[string]bool)
+	if n > int32(len(h)) {
+		n = int32(len(h))
+	}
+	var i int32
+	for i = 0; i < n; i++ {
+		item := heap.Pop(&h).(*invocationHeapItem)
+		topN[item.ixName] = true
+	}
+	return topN
+}
+
+func getInstructionInvocations(resp *fasthttp.Response) (instructionInvocationsResponse, error) {
+	var invocationsResponse invocationsMetricsResponse
+	err := json.Unmarshal(resp.Body(), &invocationsResponse)
+	if err != nil {
+		return instructionInvocationsResponse{}, err
+	}
+	times := make([]time.Time, len(invocationsResponse.Buckets))
+	values := make([]int32, len(invocationsResponse.Buckets))
+	statusLabels := make([]string, len(invocationsResponse.Buckets))
+	ixNameLabels := make([]string, len(invocationsResponse.Buckets))
+	//Faster than append since we pre allocated
+	//Revers iter for Long -> wide conversion
+	for i, n := range invocationsResponse.Buckets {
+		times[i] = n.Time
+		values[i] = int32(n.Count)
+		statusLabels[i] = n.Status
+		ixNameLabels[i] = n.IxName
+	}
+	return instructionInvocationsResponse{
+		times:        times,
+		values:       values,
+		statusLabels: statusLabels,
+		ixNameLabels: ixNameLabels,
+	}, nil
+}
+
 func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
 	// Unmarshal the JSON into our queryModel.
 	var qm queryModel
@@ -217,22 +306,59 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 	switch qm.Payload.QueryType {
 	case string(Invocations):
 		{
-			var invocationsResponse invocationsMetricsResponse
-			err = json.Unmarshal(resp.Body(), &invocationsResponse)
+			r, err := getInstructionInvocations(resp)
+
 			if err != nil {
 				return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 			}
-			times := make([]time.Time, len(invocationsResponse.Buckets))
-			values := make([]int32, len(invocationsResponse.Buckets))
-			statusLabels := make([]string, len(invocationsResponse.Buckets))
-			ixNameLabels := make([]string, len(invocationsResponse.Buckets))
-			//Faster than append since we pre allocated
-			//Revers iter for Long -> wide conversion
-			for i, n := range invocationsResponse.Buckets {
-				times[i] = n.Time
-				values[i] = int32(n.Count)
-				statusLabels[i] = n.Status
-				ixNameLabels[i] = n.IxName
+
+			frame.Fields = append(frame.Fields,
+				data.NewField("time", nil, r.times),
+				data.NewField("count", nil, r.values),
+				data.NewField("status", nil, r.statusLabels),
+				data.NewField("instructionName", nil, r.ixNameLabels),
+			)
+
+		}
+	case string(TopInstructions):
+		{
+			r, err := getInstructionInvocations(resp)
+			log.DefaultLogger.Info("TopInstructions", "r", r)
+			if err != nil {
+				return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
+			}
+			log.DefaultLogger.Info("TopInstructions", "topN", qm.Payload.TopN)
+			var ixTotalsMap = invocationHeap{}
+			var seen = make(map[string]*invocationHeapItem)
+			heap.Init(&ixTotalsMap)
+			for i := 0; i < len(r.times); i++ {
+				if _, ok := seen[r.ixNameLabels[i]]; !ok {
+					seen[r.ixNameLabels[i]] = &invocationHeapItem{
+						count:  r.values[i],
+						ixName: r.ixNameLabels[i],
+					}
+					heap.Push(&ixTotalsMap, seen[r.ixNameLabels[i]])
+				} else {
+					ixTotalsMap.update(seen[r.ixNameLabels[i]], r.values[i])
+				}
+			}
+			log.DefaultLogger.Info("made it here")
+			top := ixTotalsMap.topN(qm.Payload.TopN)
+			lenb := len(r.times)
+			times := make([]time.Time, lenb)
+			values := make([]int32, lenb)
+			statusLabels := make([]string, lenb)
+			ixNameLabels := make([]string, lenb)
+
+			for i := 0; i < len(r.times); i++ {
+				ix_name := r.ixNameLabels[i]
+				if _, ok := top[ix_name]; ok {
+
+					times = append(times, r.times[i])
+					values = append(values, r.values[i])
+					statusLabels = append(statusLabels, r.statusLabels[i])
+					ixNameLabels = append(ixNameLabels, r.ixNameLabels[i])
+				}
 			}
 
 			frame.Fields = append(frame.Fields,
@@ -241,10 +367,6 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 				data.NewField("status", nil, statusLabels),
 				data.NewField("instructionName", nil, ixNameLabels),
 			)
-
-			if err != nil {
-				return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("long to wide: %v", err.Error()))
-			}
 
 		}
 	case string(UniqueSigners):

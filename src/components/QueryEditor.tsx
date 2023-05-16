@@ -15,6 +15,12 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
     onChange({ ...query, payload: { ...query.payload, instructionName: event.target.value } });
     onRunQuery();
   };
+
+  const onTopNChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onChange({ ...query, payload: { ...query.payload, topN: parseInt(event.target.value, 10) } });
+    onRunQuery();
+  };
+
   const types = QueryTypes;
   const onQueryTypeChange = (event: SelectableValue<string>) => {
     onChange({ ...query, payload: { ...query.payload, queryType: event.value as QueryType } });
@@ -45,6 +51,12 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
       {selectedType?.fields.includes('instructionName') &&
         <InlineField label="Instruction Name" tooltip="Optional Name of instruction to filter by." labelWidth={20}>
           <Input onChange={onIxNameChange} value={payload?.instructionName} width={16} />
+        </InlineField>
+      }
+
+      {selectedType?.fields.includes('topN') &&
+        <InlineField label="Top N" tooltip="N Number of values" labelWidth={15}>
+          <Input type="number" onChange={onTopNChange} value={payload?.topN} width={8} />
         </InlineField>
       }
     </div >

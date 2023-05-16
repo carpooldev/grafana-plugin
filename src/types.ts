@@ -6,6 +6,7 @@ export const DEFAULT_CARPOOL_HOST = 'https://api.carpool.dev';
 export interface SolanaInvocationQuery {
   programId: string;
   instructionName?: string;
+  topN?: number;
   queryType: QueryType;
 }
 
@@ -20,6 +21,7 @@ export enum QueryType {
   ProgramFailues = 'failures',
   ProgramDeployments = 'programDeployments',
   FailedProgramDeployments = 'failedProgramDeployments',
+  TopInstructions = 'topInstructions',
 }
 
 export const QueryTypes = [
@@ -52,6 +54,11 @@ export const QueryTypes = [
     label: 'Failed Program Deployments',
     value: QueryType.FailedProgramDeployments,
     fields: ['programId']
+  },
+  {
+    label: 'Top Instructions',
+    value: QueryType.TopInstructions,
+    fields: ['programId', 'topN']
   },
 ];
 
