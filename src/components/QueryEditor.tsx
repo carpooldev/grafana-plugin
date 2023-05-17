@@ -42,6 +42,7 @@ export function QueryEditor({ query, onChange, onRunQuery }: Props) {
       <InlineField label="Query Type" labelWidth={16} tooltip="Query type, currently Basic Invocations, Signers">
         <Select onChange={onQueryTypeChange} options={types} value={selectedType} />
       </InlineField>
+
       {selectedType?.fields.includes('programId') &&
         <InlineField label="Program Id" labelWidth={10}>
           <Input onChange={onProgramIdChange} value={payload?.programId} width={16} />
