@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/master/docs/sources/developers/plugins/plugin.schema.json",
   "type": "datasource",
   "name": "Carpool",
-  "id": "carpooldata-carpool-datasource",
+  "id": "carpool-carpool-datasource",
   "metrics": true,
   "backend": true,
   "executable": "gpx_carpool",
