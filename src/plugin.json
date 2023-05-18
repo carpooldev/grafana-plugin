@@ -27,7 +27,7 @@
     "screenshots": [
       {
         "name": "Metrics",
-        "path": "src/img/image.png"
+        "path": "img/image.png"
       }
     ],
     "version": "%VERSION%",
