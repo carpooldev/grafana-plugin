@@ -1,6 +1,6 @@
 {
   "name": "carpool",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Web3 smart contract data at your finger tips",
   "scripts": {
     "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",

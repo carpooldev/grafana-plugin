@@ -18,8 +18,18 @@
       "small": "img/logo.svg",
       "large": "img/logo.svg"
     },
-    "links": [],
-    "screenshots": [],
+    "links": [
+      {
+        "name": "HomePage",
+        "url": "https://carpool.dev"
+      }
+    ],
+    "screenshots": [
+      {
+        "name": "Metrics",
+        "path": "img/screenshot.png"
+      }
+    ],
     "version": "%VERSION%",
     "updated": "%TODAY%"
   },

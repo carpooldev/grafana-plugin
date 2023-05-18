@@ -307,7 +307,6 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 	case string(Invocations):
 		{
 			r, err := getInstructionInvocations(resp)
-
 			if err != nil {
 				return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 			}
@@ -390,33 +389,15 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 		}
 	case string(Failures):
 		{
-			var invocationsResponse invocationsMetricsResponse
-			err = json.Unmarshal(resp.Body(), &invocationsResponse)
+			r, err := getInstructionInvocations(resp)
 			if err != nil {
 				return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
 			}
-			times := []time.Time{}
-			values := []int32{}
-			ixNameLabels := []string{}
-			//Faster than append since we pre allocated
-			//Revers iter for Long -> wide conversion
-			for _, n := range invocationsResponse.Buckets {
-				if n.Status != "success" {
-					times = append(times, n.Time)
-					values = append(values, int32(n.Count))
-					ixNameLabels = append(ixNameLabels, n.IxName)
-				}
-			}
-
 			frame.Fields = append(frame.Fields,
-				data.NewField("time", nil, times),
-				data.NewField("count", nil, values),
-				data.NewField("instructionName", nil, ixNameLabels),
+				data.NewField("time", nil, r.times),
+				data.NewField("count", nil, r.values),
+				data.NewField("instructionName", nil, r.ixNameLabels),
 			)
-
-			if err != nil {
-				return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("long to wide: %v", err.Error()))
-			}
 		}
 	case string(FailureRate):
 		{
@@ -451,7 +432,6 @@ func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query 
 	case string(FailedProgramDeployments):
 		fallthrough
 	case string(ProgramDeployments):
-
 		{
 			var programEvents programEventsResponse
 			err = json.Unmarshal(resp.Body(), &programEvents)
